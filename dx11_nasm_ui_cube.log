@@ -1,0 +1,15 @@
+[INFO] [app] start
+[INFO] [app] window created
+[INFO] [renderer] init begin
+[INFO] [renderer] shader compiler loaded
+[INFO] [renderer] trying hardware device
+[INFO] [renderer] device + swapchain created
+[INFO] [renderer] backbuffer + RTV ready
+[INFO] [renderer] world resources ready
+[INFO] [renderer] ui resources ready
+[INFO] [app] window shown
+[CRITICAL] unhandled exception
+[CRITICAL] exception code = 0x406D1388
+[CRITICAL] exception address = 0x000000000071837A
+[CRITICAL] stage = renderer.frame.present
+[INFO] [app] exit
