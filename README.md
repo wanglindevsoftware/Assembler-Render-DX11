@@ -24,3 +24,6 @@ This project was created to explore rendering, object drawing, shader usage, Dir
 
 ## Screenshot
 ![Project Screenshot](test.png)
+
+## Update Screenshot
+![Project Screenshot](test1.png)
