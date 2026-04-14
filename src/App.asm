@@ -1,4 +1,3 @@
-
 section .text align=16
 
 global WinMainCRTStartup
@@ -34,6 +33,7 @@ WinMainCRTStartup:
     call Log_Info
 
     call Physics_Init
+    call Camera_Init
     call UI_Init
 
     mov dword [g_running], 1
@@ -57,6 +57,10 @@ WinMainCRTStartup:
     lea rcx, [stageMainLoopUI]
     call Log_SetStage
     call UI_Update
+
+    lea rcx, [stageMainLoopCamera]
+    call Log_SetStage
+    call Camera_Update
 
     lea rcx, [stageMainLoopPhysics]
     call Log_SetStage
@@ -125,12 +129,29 @@ App_UpdateMouseFromLParam:
     ; r9d = lParam
     mov eax, r9d
     movsx eax, ax
-    mov [g_mouseX], eax
+    mov edx, r9d
+    shr edx, 16
+    movsx edx, dx
 
-    mov eax, r9d
-    shr eax, 16
-    movsx eax, ax
-    mov [g_mouseY], eax
+    cmp dword [g_mouseInitialized], 0
+    jne .delta
+    mov dword [g_mouseInitialized], 1
+    mov dword [g_mouseDX], 0
+    mov dword [g_mouseDY], 0
+    jmp .store
+
+.delta:
+    mov ecx, eax
+    sub ecx, [g_mouseX]
+    add [g_mouseDX], ecx
+
+    mov ecx, edx
+    sub ecx, [g_mouseY]
+    add [g_mouseDY], ecx
+
+.store:
+    mov [g_mouseX], eax
+    mov [g_mouseY], edx
     ret
 
 WndProc:
@@ -142,6 +163,9 @@ WndProc:
     cmp edx, WM_DESTROY
     je .destroy_now
 
+    cmp edx, WM_ERASEBKGND
+    je .erase_bkgnd
+
     cmp edx, WM_MOUSEMOVE
     je .mouse_move
 
@@ -151,6 +175,12 @@ WndProc:
     cmp edx, WM_LBUTTONUP
     je .mouse_up
 
+    cmp edx, WM_RBUTTONDOWN
+    je .right_down
+
+    cmp edx, WM_RBUTTONUP
+    je .right_up
+
     cmp edx, WM_KEYDOWN
     je .key_down
 
@@ -159,6 +189,11 @@ WndProc:
 
 .default_proc:
     call DefWindowProcA
+    add rsp, 40
+    ret
+
+.erase_bkgnd:
+    mov eax, 1
     add rsp, 40
     ret
 
@@ -190,6 +225,31 @@ WndProc:
     add rsp, 40
     ret
 
+.right_down:
+    call App_UpdateMouseFromLParam
+    cmp dword [g_mouseRDown], 0
+    jne .right_down_done
+    mov dword [g_mouseRPressed], 1
+.right_down_done:
+    mov dword [g_mouseRDown], 1
+    mov rcx, [g_hWnd]
+    call SetCapture
+    xor eax, eax
+    add rsp, 40
+    ret
+
+.right_up:
+    call App_UpdateMouseFromLParam
+    cmp dword [g_mouseRDown], 0
+    je .right_up_done
+    mov dword [g_mouseRReleased], 1
+.right_up_done:
+    mov dword [g_mouseRDown], 0
+    call ReleaseCapture
+    xor eax, eax
+    add rsp, 40
+    ret
+
 .key_down:
     cmp r8d, VK_ESCAPE
     je .close_now
@@ -213,11 +273,51 @@ WndProc:
 
 .check_r_down:
     cmp r8d, VK_R
-    jne .default_proc
+    jne .check_tab_down
     cmp dword [g_rDown], 0
     jne .handled
     mov dword [g_rDown], 1
     mov dword [g_rPressed], 1
+    jmp .handled
+
+.check_tab_down:
+    cmp r8d, VK_TAB
+    jne .check_move_down
+    cmp dword [g_tabDown], 0
+    jne .handled
+    mov dword [g_tabDown], 1
+    mov dword [g_tabPressed], 1
+    jmp .handled
+
+.check_move_down:
+    cmp r8d, VK_W
+    jne .check_a_down
+    mov dword [g_wDown], 1
+    jmp .handled
+.check_a_down:
+    cmp r8d, VK_A
+    jne .check_s_down
+    mov dword [g_aDown], 1
+    jmp .handled
+.check_s_down:
+    cmp r8d, VK_S
+    jne .check_d_down
+    mov dword [g_sDown], 1
+    jmp .handled
+.check_d_down:
+    cmp r8d, VK_D
+    jne .check_q_down
+    mov dword [g_dDown], 1
+    jmp .handled
+.check_q_down:
+    cmp r8d, VK_Q
+    jne .check_e_down
+    mov dword [g_qDown], 1
+    jmp .handled
+.check_e_down:
+    cmp r8d, VK_E
+    jne .default_proc
+    mov dword [g_eDown], 1
     jmp .handled
 
 .key_up:
@@ -238,8 +338,59 @@ WndProc:
 
 .check_r_up:
     cmp r8d, VK_R
-    jne .default_proc
+    jne .check_tab_up
     mov dword [g_rDown], 0
+    xor eax, eax
+    add rsp, 40
+    ret
+
+.check_tab_up:
+    cmp r8d, VK_TAB
+    jne .check_w_up
+    mov dword [g_tabDown], 0
+    xor eax, eax
+    add rsp, 40
+    ret
+
+.check_w_up:
+    cmp r8d, VK_W
+    jne .check_a_up
+    mov dword [g_wDown], 0
+    xor eax, eax
+    add rsp, 40
+    ret
+.check_a_up:
+    cmp r8d, VK_A
+    jne .check_s_up
+    mov dword [g_aDown], 0
+    xor eax, eax
+    add rsp, 40
+    ret
+.check_s_up:
+    cmp r8d, VK_S
+    jne .check_d_up
+    mov dword [g_sDown], 0
+    xor eax, eax
+    add rsp, 40
+    ret
+.check_d_up:
+    cmp r8d, VK_D
+    jne .check_q_up
+    mov dword [g_dDown], 0
+    xor eax, eax
+    add rsp, 40
+    ret
+.check_q_up:
+    cmp r8d, VK_Q
+    jne .check_e_up
+    mov dword [g_qDown], 0
+    xor eax, eax
+    add rsp, 40
+    ret
+.check_e_up:
+    cmp r8d, VK_E
+    jne .default_proc
+    mov dword [g_eDown], 0
     xor eax, eax
     add rsp, 40
     ret
@@ -335,6 +486,11 @@ App_InitWindow:
     test rax, rax
     jz .fail
 
+    ; DX11 UI-pass branch: no child GDI panel window here.
+    ; Input stays on the main HWND; if DX11 UI init fails, the old GDI overlay
+    ; can still fall back directly onto the main window.
+    mov qword [g_ovlWnd], 0
+
     mov eax, 1
     add rsp, 68h
     ret
@@ -411,13 +567,17 @@ App_UpdateDeltaTime:
     ret
 
 App_EndInputFrame:
+    mov dword [g_mouseDX], 0
+    mov dword [g_mouseDY], 0
     mov dword [g_mouseLPressed], 0
     mov dword [g_mouseLReleased], 0
+    mov dword [g_mouseRPressed], 0
+    mov dword [g_mouseRReleased], 0
     mov dword [g_spacePressed], 0
     mov dword [g_pPressed], 0
     mov dword [g_rPressed], 0
+    mov dword [g_tabPressed], 0
     ret
-
 
 App_ShowWindow:
     sub rsp, 40

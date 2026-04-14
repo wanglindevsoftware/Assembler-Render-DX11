@@ -10,6 +10,6 @@
 [INFO] [app] window shown
 [CRITICAL] unhandled exception
 [CRITICAL] exception code = 0x406D1388
-[CRITICAL] exception address = 0x000000000071837A
+[CRITICAL] exception address = 0x00000000007A837A
 [CRITICAL] stage = renderer.frame.present
 [INFO] [app] exit

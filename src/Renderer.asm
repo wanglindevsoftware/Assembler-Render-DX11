@@ -212,9 +212,66 @@ Renderer_Init:
     lea rcx, [g_backBuffer]
     call ReleasePtr
 
+    ; depth texture + DSV
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.Width], WINDOW_WIDTH
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.Height], WINDOW_HEIGHT
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.MipLevels], 1
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.ArraySize], 1
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.Format], DXGI_FORMAT_D24_UNORM_S8_UINT
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.SampleDesc + DXGI_SAMPLE_DESC.Count], 1
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.SampleDesc + DXGI_SAMPLE_DESC.Quality], 0
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.Usage], D3D11_USAGE_DEFAULT
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.BindFlags], D3D11_BIND_DEPTH_STENCIL
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.CPUAccessFlags], 0
+    mov dword [g_tex2DDesc + D3D11_TEXTURE2D_DESC.MiscFlags], 0
+
+    mov rcx, [g_device]
+    lea rdx, [g_tex2DDesc]
+    xor r8d, r8d
+    lea r9, [g_depthTex]
+    mov rax, [rcx]
+    call qword [rax + ID3D11Device_CreateTexture2D]
+    test eax, eax
+    js .depth_optional_disable
+
+    mov rcx, [g_device]
+    mov rdx, [g_depthTex]
+    xor r8d, r8d
+    lea r9, [g_dsv]
+    mov rax, [rcx]
+    call qword [rax + ID3D11Device_CreateDepthStencilView]
+    test eax, eax
+    js .depth_view_optional_disable
+
+    ; raster state: solid + cull none
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.FillMode], D3D11_FILL_SOLID
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.CullMode], D3D11_CULL_NONE
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.FrontCounterClockwise], FALSE
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.DepthBias], 0
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.DepthBiasClamp], 0
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.SlopeScaledDepthBias], 0
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.DepthClipEnable], TRUE
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.ScissorEnable], FALSE
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.MultisampleEnable], FALSE
+    mov dword [g_rsDesc + D3D11_RASTERIZER_DESC.AntialiasedLineEnable], FALSE
+
+    mov rcx, [g_device]
+    lea rdx, [g_rsDesc]
+    lea r8, [g_worldRS]
+    mov rax, [rcx]
+    call qword [rax + ID3D11Device_CreateRasterizerState]
+    test eax, eax
+    js .raster_optional_disable
+
+    lea rcx, [logBackBufferOk]
+    call Log_Info
+    jmp .after_raster_optional
+
+.after_depth_optional:
     lea rcx, [logBackBufferOk]
     call Log_Info
 
+.after_raster_optional:
     lea rcx, [stageWorldVSCompile]
     call Log_SetStage
 
@@ -348,7 +405,7 @@ Renderer_Init:
     call Log_SetStage
 
     ; World constant buffer
-    mov dword [g_bufDesc + D3D11_BUFFER_DESC.ByteWidth], 16
+    mov dword [g_bufDesc + D3D11_BUFFER_DESC.ByteWidth], 64
     mov dword [g_bufDesc + D3D11_BUFFER_DESC.Usage], D3D11_USAGE_DEFAULT
     mov dword [g_bufDesc + D3D11_BUFFER_DESC.BindFlags], D3D11_BIND_CONSTANT_BUFFER
     mov dword [g_bufDesc + D3D11_BUFFER_DESC.CPUAccessFlags], 0
@@ -381,14 +438,52 @@ Renderer_Init:
     call Log_SetStage
     call RenderUI_InitResources
     test eax, eax
-    jz .fail
+    jnz .ui_ready
 
+    ; UI path is optional in this branch: if DX11 UI init fails,
+    ; keep the world renderer alive and fall back to the old overlay path.
+    lea rcx, [logUiDrawSkipped]
+    call Log_Warn
+    jmp .ui_continue
+
+.ui_ready:
     lea rcx, [logUiOk]
     call Log_Info
 
+.ui_continue:
     mov eax, 1
     add rsp, 68h
     ret
+
+.depth_optional_disable:
+    mov edx, eax
+    lea rcx, [logDepthTexFailHr]
+    call Log_WarnHex32
+    mov qword [g_depthTex], 0
+    mov qword [g_dsv], 0
+    lea rcx, [logDepthOptionalWarn]
+    call Log_Warn
+    jmp .after_depth_optional
+
+.depth_view_optional_disable:
+    mov edx, eax
+    lea rcx, [logDepthViewFailHr]
+    call Log_WarnHex32
+    lea rcx, [g_depthTex]
+    call ReleasePtr
+    mov qword [g_dsv], 0
+    lea rcx, [logDepthOptionalWarn]
+    call Log_Warn
+    jmp .after_depth_optional
+
+.raster_optional_disable:
+    mov edx, eax
+    lea rcx, [logRasterFailHr]
+    call Log_WarnHex32
+    mov qword [g_worldRS], 0
+    lea rcx, [logRasterOptionalWarn]
+    call Log_Warn
+    jmp .after_raster_optional
 
 .backbuffer_fail:
     mov edx, eax
@@ -474,6 +569,31 @@ Renderer_UpdateWorldCB:
 .energy:
     movss xmm0, [g_cubeEnergy]
     movss [g_worldCBData + 12], xmm0
+
+    movss xmm0, [g_camPosX]
+    movss [g_worldCBData + 16], xmm0
+    movss xmm0, [g_camPosY]
+    movss [g_worldCBData + 20], xmm0
+    movss xmm0, [g_camPosZ]
+    movss [g_worldCBData + 24], xmm0
+    movss xmm0, [g_camYaw]
+    movss [g_worldCBData + 28], xmm0
+
+    movss xmm0, [g_camPitch]
+    movss [g_worldCBData + 32], xmm0
+    movss xmm0, [g_camFov]
+    movss [g_worldCBData + 36], xmm0
+    movss xmm0, [kAspectRatio]
+    movss [g_worldCBData + 40], xmm0
+    movss xmm0, [g_lightStrength]
+    movss [g_worldCBData + 44], xmm0
+
+    cvtsi2ss xmm0, dword [g_shaderModeIndex]
+    movss [g_worldCBData + 48], xmm0
+    movss xmm0, [g_cubeHeight01]
+    movss [g_worldCBData + 52], xmm0
+    mov dword [g_worldCBData + 56], 0
+    mov dword [g_worldCBData + 60], 0
     ret
 
 Renderer_RenderFrame:
@@ -519,15 +639,34 @@ Renderer_RenderFrame:
     mov rcx, [g_context]
     mov edx, 1
     lea r8, [g_rtv]
-    xor r9d, r9d
+    mov r9, [g_dsv]
     mov rax, [rcx]
     call qword [rax + ID3D11DeviceContext_OMSetRenderTargets]
+
+    cmp qword [g_dsv], 0
+    je .skip_depth_clear
+    mov rcx, [g_context]
+    mov rdx, [g_dsv]
+    mov r8d, D3D11_CLEAR_DEPTH
+    movss xmm3, [kOne]
+    mov dword [rsp + 20h], 0
+    mov rax, [rcx]
+    call qword [rax + ID3D11DeviceContext_ClearDepthStencilView]
+.skip_depth_clear:
 
     mov rcx, [g_context]
     mov edx, 1
     lea r8, [viewportData]
     mov rax, [rcx]
     call qword [rax + ID3D11DeviceContext_RSSetViewports]
+
+    cmp qword [g_worldRS], 0
+    je .skip_rs_state
+    mov rcx, [g_context]
+    mov rdx, [g_worldRS]
+    mov rax, [rcx]
+    call qword [rax + ID3D11DeviceContext_RSSetState]
+.skip_rs_state:
 
     mov rcx, [g_context]
     mov rdx, [g_rtv]
@@ -547,14 +686,14 @@ Renderer_RenderFrame:
     lea rcx, [stageFrameWorld]
     call Log_SetStage
 
-    ; World line pass
+    ; World solid pass
     mov rcx, [g_context]
     mov rdx, [g_worldLayout]
     mov rax, [rcx]
     call qword [rax + ID3D11DeviceContext_IASetInputLayout]
 
     mov rcx, [g_context]
-    mov edx, D3D11_PRIMITIVE_TOPOLOGY_LINELIST
+    mov edx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
     mov rax, [rcx]
     call qword [rax + ID3D11DeviceContext_IASetPrimitiveTopology]
 
@@ -596,10 +735,22 @@ Renderer_RenderFrame:
     mov rax, [rcx]
     call qword [rax + ID3D11DeviceContext_Draw]
 
-    call RenderUI_UpdateAndDraw
-    test eax, eax
-    jz .ui_fail
+    ; Try the DX11 UI pass, but always keep the restored overlay visible
+    ; until the DX11 path is visually verified.
+    cmp qword [g_uiVB], 0
+    je .skip_dx11_ui
+    cmp qword [g_uiLayout], 0
+    je .skip_dx11_ui
+    cmp qword [g_uiVS], 0
+    je .skip_dx11_ui
+    cmp qword [g_uiPS], 0
+    je .skip_dx11_ui
+    cmp qword [g_uiBlend], 0
+    je .skip_dx11_ui
 
+    call RenderUI_UpdateAndDraw
+
+.skip_dx11_ui:
     lea rcx, [stagePresent]
     call Log_SetStage
 
@@ -611,6 +762,8 @@ Renderer_RenderFrame:
     test eax, eax
     js .present_fail
 
+    call OverlayUI_Draw
+
     mov eax, 1
     add rsp, 68h
     ret
@@ -618,11 +771,6 @@ Renderer_RenderFrame:
 .null_fail:
     lea rcx, [logRenderNullDx11]
     call Log_Error
-    xor eax, eax
-    add rsp, 68h
-    ret
-
-.ui_fail:
     xor eax, eax
     add rsp, 68h
     ret
@@ -688,6 +836,8 @@ ReleasePtr:
 Renderer_Shutdown:
     sub rsp, 40
 
+    call OverlayUI_Shutdown
+
     lea rcx, [g_tmpBlob]
     call ReleasePtr
     lea rcx, [g_errBlob]
@@ -715,6 +865,12 @@ Renderer_Shutdown:
     lea rcx, [g_worldVS]
     call ReleasePtr
 
+    lea rcx, [g_worldRS]
+    call ReleasePtr
+    lea rcx, [g_dsv]
+    call ReleasePtr
+    lea rcx, [g_depthTex]
+    call ReleasePtr
     lea rcx, [g_rtv]
     call ReleasePtr
     lea rcx, [g_backBuffer]

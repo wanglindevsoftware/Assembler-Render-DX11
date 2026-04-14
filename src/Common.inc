@@ -1,4 +1,3 @@
-
 %ifndef DX11_COMMON_INC
 %define DX11_COMMON_INC
 
@@ -8,46 +7,70 @@
 %define WINDOW_WIDTH                    1280
 %define WINDOW_HEIGHT                   720
 
-%define UI_MAX_VERTICES                 512
-%define WORLD_VERTEX_COUNT              36
+%define UI_MAX_VERTICES                 65536
+%define WORLD_VERTEX_COUNT              2010
 
-%define UI_PANEL_X                      24
-%define UI_PANEL_Y                      24
-%define UI_PANEL_W                      320
-%define UI_PANEL_H                      264
+%define UI_PANEL_X                      992
+%define UI_PANEL_Y                      20
+%define UI_PANEL_W                      272
+%define UI_PANEL_H                      560
+%define UI_TITLE_H                      30
 
-%define UI_BUTTON_X                     48
-%define UI_BUTTON_W                     272
-%define UI_BUTTON_H                     38
-%define UI_BUTTON1_Y                    72
-%define UI_BUTTON2_Y                    118
-%define UI_BUTTON3_Y                    164
+%define UI_BUTTON_X                     1010
+%define UI_BUTTON_W                     236
+%define UI_BUTTON_H                     36
+%define UI_BUTTON1_Y                    126
+%define UI_BUTTON2_Y                    178
+%define UI_BUTTON3_Y                    230
 
-%define UI_BAR_X                        48
-%define UI_BAR_Y                        224
-%define UI_BAR_W                        272
-%define UI_BAR_H                        24
+%define UI_SLIDER_X                     1010
+%define UI_SLIDER_W                     236
+%define UI_SLIDER_H                     20
+%define UI_SLIDER1_Y                    320
+%define UI_SLIDER2_Y                    378
+
+%define UI_DROPDOWN_X                   1010
+%define UI_DROPDOWN_W                   236
+%define UI_DROPDOWN_H                   32
+%define UI_DROPDOWN_Y                   470
+%define UI_DROPDOWN_OPT_H               26
+%define UI_DROPDOWN_OPT1_Y              506
+%define UI_DROPDOWN_OPT2_Y              536
+%define UI_DROPDOWN_OPT3_Y              566
 
 %define CS_VREDRAW                      0001h
 %define CS_HREDRAW                      0002h
 
 %define WS_FIXEDWINDOW                  00CA0000h
+%define WS_CHILD                        40000000h
+%define WS_VISIBLE                      10000000h
 %define CW_USEDEFAULT                   80000000h
 %define SW_SHOWDEFAULT                  10
 
 %define WM_DESTROY                      0002h
 %define WM_CLOSE                        0010h
+%define WM_ERASEBKGND                   0014h
 %define WM_QUIT                         0012h
+%define WM_PAINT                        000Fh
 %define WM_KEYDOWN                      0100h
 %define WM_KEYUP                        0101h
 %define WM_MOUSEMOVE                    0200h
 %define WM_LBUTTONDOWN                  0201h
 %define WM_LBUTTONUP                    0202h
+%define WM_RBUTTONDOWN                  0204h
+%define WM_RBUTTONUP                    0205h
 
+%define VK_TAB                          09h
 %define VK_ESCAPE                       1Bh
 %define VK_SPACE                        20h
+%define VK_A                            41h
+%define VK_D                            44h
+%define VK_E                            45h
 %define VK_P                            50h
+%define VK_Q                            51h
 %define VK_R                            52h
+%define VK_S                            53h
+%define VK_W                            57h
 
 %define IDC_ARROW                       32512
 %define PM_REMOVE                       0001h
@@ -68,11 +91,14 @@
 %define DXGI_FORMAT_R32G32_FLOAT        16
 %define DXGI_FORMAT_R32G32B32_FLOAT     6
 
+%define DXGI_FORMAT_D24_UNORM_S8_UINT   45
+
 %define DXGI_USAGE_RENDER_TARGET_OUTPUT 00000020h
 %define DXGI_SWAP_EFFECT_DISCARD        0
 
 %define D3D11_USAGE_DEFAULT             0
 %define D3D11_BIND_VERTEX_BUFFER        00000001h
+%define D3D11_BIND_DEPTH_STENCIL        00000002h
 %define D3D11_BIND_CONSTANT_BUFFER      00000004h
 %define D3D11_INPUT_PER_VERTEX_DATA     0
 %define D3D11_PRIMITIVE_TOPOLOGY_LINELIST 2
@@ -84,6 +110,9 @@
 %define D3D11_BLEND_INV_SRC_ALPHA       6
 %define D3D11_BLEND_OP_ADD              1
 %define D3D11_COLOR_WRITE_ENABLE_ALL    0Fh
+%define D3D11_FILL_SOLID                3
+%define D3D11_CULL_NONE                 1
+%define D3D11_CLEAR_DEPTH               00000001h
 
 %define D3DCOMPILE_ENABLE_STRICTNESS    00000800h
 
@@ -93,11 +122,14 @@
 %define IDXGISwapChain_GetBuffer                 72
 
 %define ID3D11Device_CreateBuffer                24
+%define ID3D11Device_CreateTexture2D            40
 %define ID3D11Device_CreateRenderTargetView      72
+%define ID3D11Device_CreateDepthStencilView      80
 %define ID3D11Device_CreateInputLayout           88
 %define ID3D11Device_CreateVertexShader          96
 %define ID3D11Device_CreatePixelShader          120
 %define ID3D11Device_CreateBlendState           160
+%define ID3D11Device_CreateRasterizerState       176
 
 %define ID3D11DeviceContext_VSSetConstantBuffers   56
 %define ID3D11DeviceContext_PSSetShader            72
@@ -108,9 +140,11 @@
 %define ID3D11DeviceContext_IASetPrimitiveTopology 192
 %define ID3D11DeviceContext_OMSetRenderTargets    264
 %define ID3D11DeviceContext_OMSetBlendState       280
+%define ID3D11DeviceContext_RSSetState            344
 %define ID3D11DeviceContext_RSSetViewports        352
 %define ID3D11DeviceContext_UpdateSubresource     384
 %define ID3D11DeviceContext_ClearRenderTargetView 400
+%define ID3D11DeviceContext_ClearDepthStencilView 424
 
 %define ID3DBlob_GetBufferPointer                 24
 %define ID3DBlob_GetBufferSize                    32
@@ -226,6 +260,32 @@ struc D3D11_RENDER_TARGET_BLEND_DESC
     .BlendOpAlpha          resd 1
     .RenderTargetWriteMask resb 1
     .pad0                  resb 3
+endstruc
+
+struc D3D11_TEXTURE2D_DESC
+    .Width              resd 1
+    .Height             resd 1
+    .MipLevels          resd 1
+    .ArraySize          resd 1
+    .Format             resd 1
+    .SampleDesc         resb DXGI_SAMPLE_DESC_size
+    .Usage              resd 1
+    .BindFlags          resd 1
+    .CPUAccessFlags     resd 1
+    .MiscFlags          resd 1
+endstruc
+
+struc D3D11_RASTERIZER_DESC
+    .FillMode              resd 1
+    .CullMode              resd 1
+    .FrontCounterClockwise resd 1
+    .DepthBias             resd 1
+    .DepthBiasClamp        resd 1
+    .SlopeScaledDepthBias  resd 1
+    .DepthClipEnable       resd 1
+    .ScissorEnable         resd 1
+    .MultisampleEnable     resd 1
+    .AntialiasedLineEnable resd 1
 endstruc
 
 struc D3D11_BLEND_DESC
